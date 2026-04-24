@@ -1,7 +1,7 @@
-FROM golang:1.22 AS builder
+FROM golang:1.26 AS builder
 WORKDIR /app
 COPY go.mod go.sum ./
-RUN go mod download
+RUN go mod download 2>&1 || true
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -o bin/kube-scheduler ./cmd/scheduler
 
