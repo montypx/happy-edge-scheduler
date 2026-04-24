@@ -1,0 +1,15 @@
+# Build outputs
+bin/
+scheduler
+*.exe
+
+# Go
+vendor/
+*.test
+*.out
+
+.vscode/
+
+# Config with sensitive data
+scheduler-config.yaml
+kubeconfig
