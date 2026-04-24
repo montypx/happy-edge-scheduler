@@ -1,6 +1,6 @@
 # Build outputs
 bin/
-scheduler
+/scheduler
 *.exe
 
 # Go
