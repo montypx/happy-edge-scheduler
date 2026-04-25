@@ -59,12 +59,11 @@ func (pl *HappyEdge) Name() string {
 }
 
 func (pl *HappyEdge) nodeMetricConfig(node *v1.Node, metricName string) MetricConfig {
-	for _, labelVal := range node.Labels {
-		if overrides, ok := pl.args.Groups[labelVal]; ok {
+	if groupName, ok := node.Labels["happyedge.io/group"]; ok {
+		if overrides, ok := pl.args.Groups[groupName]; ok {
 			if cfg, ok := overrides[metricName]; ok {
 				return cfg
 			}
-			break
 		}
 	}
 	return pl.args.Metrics[metricName]
