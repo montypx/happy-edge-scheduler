@@ -3,6 +3,7 @@ package happyedge
 import (
 	"context"
 	"fmt"
+	"strconv"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -139,11 +140,17 @@ func (pl *HappyEdge) PreScore(
 				continue
 			}
 			cfg := pl.nodeMetricConfig(node, metricName)
+			weight := cfg.Weight
+			if ann, ok := pod.Annotations["happyedge.io/weight-"+metricName]; ok {
+				if w, err := strconv.ParseFloat(ann, 64); err == nil {
+					weight = w
+				}
+			}
 			criteria = append(criteria, topsis.Criterion{
 				Value:    val,
 				Ideal:    cfg.Ideal,
 				NegIdeal: cfg.Worst,
-				Weight:   cfg.Weight,
+				Weight:   weight,
 			})
 		}
 		nodeCriteria = append(nodeCriteria, topsis.NodeCriteria{
