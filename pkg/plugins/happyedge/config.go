@@ -3,7 +3,7 @@ package happyedge
 import (
 	"fmt"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	config "github.com/montypx/happy-edge-scheduling-plugin/apis/config"
 	"k8s.io/apimachinery/pkg/runtime"
 )
 
@@ -28,31 +28,9 @@ var validClusterMetrics = map[string]struct{}{
 const validNodeMetricNames = "cpu_util, cpu_temp, memory_util, disk_util, gpu_temp, gpu_util, npu_util, gpu_power, cpu_power, module_power"
 const validClusterMetricNames = "cluster_power, cluster_power_rate"
 
-// MetricConfig defines the PromQL query and TOPSIS scoring parameters for a single metric.
-type MetricConfig struct {
-	Query  string  `json:"query"`
-	Ideal  float64 `json:"ideal"`
-	Worst  float64 `json:"worst"`
-	Weight float64 `json:"weight"`
-}
-
-// ClusterMetricConfig defines the PromQL query and scheduling tolerance for a cluster-level metric.
-type ClusterMetricConfig struct {
-	Query     string  `json:"query"`
-	Tolerance float64 `json:"tolerance"`
-}
-
-// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-
-type HappyEdgeArgs struct {
-	metav1.TypeMeta `json:",inline"`
-
-	PrometheusURL  string                             `json:"prometheusURL"`
-	ScrapeInterval metav1.Duration                    `json:"scrapeInterval"`
-	Metrics        map[string]MetricConfig            `json:"metrics"`
-	Groups         map[string]map[string]MetricConfig `json:"groups,omitempty"`
-	ClusterMetrics map[string]ClusterMetricConfig     `json:"clusterMetrics,omitempty"`
-}
+type HappyEdgeArgs = config.HappyEdgeArgs
+type MetricConfig = config.MetricConfig
+type ClusterMetricConfig = config.ClusterMetricConfig
 
 func NewHappyEdgeArgs(obj runtime.Object) (*HappyEdgeArgs, error) {
 	args, ok := obj.(*HappyEdgeArgs)
