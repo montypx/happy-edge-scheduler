@@ -7,6 +7,7 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/klog/v2"
 	fwk "k8s.io/kube-scheduler/framework"
 
 	"github.com/montypx/happy-edge-scheduling-plugin/pkg/plugins/happyedge/topsis"
@@ -15,6 +16,8 @@ import (
 const Name = "HappyEdge"
 
 const scoreStateKey fwk.StateKey = Name
+
+var logger = klog.NewKlogr().WithName(Name)
 
 type HappyEdge struct {
 	handle       fwk.Handle
@@ -44,7 +47,7 @@ func New(ctx context.Context, obj runtime.Object, h fwk.Handle) (fwk.Plugin, err
 	if err != nil {
 		return nil, err
 	}
-	cache, err := NewMetricsCache(args.PrometheusURL, args.ScrapeInterval.Duration, args.Metrics, args.ClusterMetrics)
+	cache, err := NewMetricsCache(ctx, args.PrometheusURL, args.ScrapeInterval.Duration, args.Metrics, args.ClusterMetrics)
 	if err != nil {
 		return nil, err
 	}
@@ -82,6 +85,12 @@ func (pl *HappyEdge) PreFilter(
 			return nil, fwk.NewStatus(fwk.Error, metricName+" metric not available")
 		}
 		if val > cfg.Tolerance {
+			logger.V(2).Info("pod rejected at PreFilter: cluster metric exceeds tolerance",
+				"pod", klog.KObj(pod),
+				"metric", metricName,
+				"value", val,
+				"tolerance", cfg.Tolerance,
+			)
 			return nil, fwk.NewStatus(
 				fwk.Unschedulable,
 				fmt.Sprintf("cluster %s=%.2f exceeds tolerance %.2f", metricName, val, cfg.Tolerance),
@@ -112,6 +121,12 @@ func (pl *HappyEdge) Filter(
 		}
 		cfg := pl.nodeMetricConfig(node, metricName)
 		if val > cfg.Worst {
+			logger.V(2).Info("node rejected at Filter: metric exceeds worst threshold",
+				"node", node.Name,
+				"metric", metricName,
+				"value", val,
+				"worst", cfg.Worst,
+			)
 			return fwk.NewStatus(
 				fwk.Unschedulable,
 				fmt.Sprintf("node %s: %s=%.2f exceeds worst threshold %.2f", node.Name, metricName, val, cfg.Worst),
@@ -158,7 +173,11 @@ func (pl *HappyEdge) PreScore(
 			Criteria: criteria,
 		})
 	}
-	state.Write(scoreStateKey, &scoreState{scores: topsis.Score(nodeCriteria)})
+	scores := topsis.Score(nodeCriteria)
+	for nodeName, score := range scores {
+		logger.V(2).Info("TOPSIS score assigned", "node", nodeName, "score", score)
+	}
+	state.Write(scoreStateKey, &scoreState{scores: scores})
 	return fwk.NewStatus(fwk.Success, "")
 }
 

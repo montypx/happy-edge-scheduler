@@ -11,9 +11,7 @@ import (
 )
 
 var (
-	// Re-use the in-tree Scheme
 	Scheme = kubeschedulerscheme.Scheme
-	// Codecs provides access to encoding and decoding for the scheme
 	Codecs = serializer.NewCodecFactory(Scheme, serializer.EnableStrict)
 )
 

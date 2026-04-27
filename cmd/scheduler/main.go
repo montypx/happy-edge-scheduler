@@ -6,7 +6,7 @@ import (
 	"k8s.io/component-base/cli"
 	"k8s.io/kubernetes/cmd/kube-scheduler/app"
 
-	_ "github.com/montypx/happy-edge-scheduling-plugin/apis/config/scheme" // ← registers via init()
+	_ "github.com/montypx/happy-edge-scheduling-plugin/apis/config/scheme"
 	"github.com/montypx/happy-edge-scheduling-plugin/pkg/plugins/happyedge"
 )
 
