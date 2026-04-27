@@ -7,6 +7,7 @@ require (
 	github.com/prometheus/common v0.66.1
 	k8s.io/api v0.35.2
 	k8s.io/apimachinery v0.35.2
+	k8s.io/code-generator v0.35.2
 	k8s.io/component-base v0.35.2
 	k8s.io/kube-scheduler v0.35.2
 	k8s.io/kubernetes v1.35.2
@@ -107,7 +108,6 @@ require (
 	k8s.io/apiserver v0.35.2 // indirect
 	k8s.io/client-go v0.35.2 // indirect
 	k8s.io/cloud-provider v0.0.0 // indirect
-	k8s.io/code-generator v0.35.2 // indirect
 	k8s.io/component-helpers v0.35.2 // indirect
 	k8s.io/controller-manager v0.35.2 // indirect
 	k8s.io/csi-translation-lib v0.0.0 // indirect
