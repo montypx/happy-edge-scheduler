@@ -1,4 +1,4 @@
-package happyedge
+package v1
 
 import (
 	"k8s.io/apimachinery/pkg/runtime"
@@ -24,4 +24,6 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 
 func init() {
 	localSchemeBuilder.Register(addKnownTypes)
+	localSchemeBuilder.Register(RegisterDefaults)
+	localSchemeBuilder.Register(RegisterConversions)
 }
