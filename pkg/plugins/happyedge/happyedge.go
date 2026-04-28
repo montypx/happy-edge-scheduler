@@ -4,6 +4,9 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"sync"
+	"sync/atomic"
+	"time"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -20,9 +23,13 @@ const scoreStateKey fwk.StateKey = Name
 var logger = klog.NewKlogr().WithName(Name)
 
 type HappyEdge struct {
-	handle       fwk.Handle
-	metricsCache MetricsReader
-	args         *HappyEdgeArgs
+	handle          fwk.Handle
+	metricsCache    MetricsReader
+	args            *HappyEdgeArgs
+	cooldownActive  atomic.Bool
+	cooldownMu      sync.Mutex
+	cooldownTimer   *time.Timer
+	cooldownSeq     uint64
 }
 
 type scoreState struct {
@@ -41,6 +48,7 @@ var _ fwk.PreFilterPlugin = &HappyEdge{}
 var _ fwk.FilterPlugin = &HappyEdge{}
 var _ fwk.PreScorePlugin = &HappyEdge{}
 var _ fwk.ScorePlugin = &HappyEdge{}
+var _ fwk.PostBindPlugin = &HappyEdge{}
 
 func New(ctx context.Context, obj runtime.Object, h fwk.Handle) (fwk.Plugin, error) {
 	args, err := NewHappyEdgeArgs(obj)
@@ -79,6 +87,10 @@ func (pl *HappyEdge) PreFilter(
 	pod *v1.Pod,
 	_ []fwk.NodeInfo,
 ) (*fwk.PreFilterResult, *fwk.Status) {
+	if pl.args.PostBindDelay.Duration > 0 && pl.cooldownActive.Load() {
+		logger.V(2).Info("pod rejected at PreFilter: scheduling cooldown active", "pod", klog.KObj(pod))
+		return nil, fwk.NewStatus(fwk.Unschedulable, "scheduling cooldown active")
+	}
 	for metricName, cfg := range pl.args.ClusterMetrics {
 		val, ok := pl.metricsCache.GetClusterMetric(metricName)
 		if !ok {
@@ -208,4 +220,27 @@ func (pl *HappyEdge) Score(
 
 func (pl *HappyEdge) ScoreExtensions() fwk.ScoreExtensions {
 	return nil
+}
+
+func (pl *HappyEdge) PostBind(ctx context.Context, state fwk.CycleState, p *v1.Pod, nodeName string) {
+	if pl.args.PostBindDelay.Duration <= 0 {
+		return
+	}
+	pl.cooldownMu.Lock()
+	pl.cooldownActive.Store(true)
+	if pl.cooldownTimer != nil {
+		pl.cooldownTimer.Stop()
+	}
+	pl.cooldownSeq++
+	seq := pl.cooldownSeq
+	pl.cooldownTimer = time.AfterFunc(pl.args.PostBindDelay.Duration, func() {
+		pl.cooldownMu.Lock()
+		defer pl.cooldownMu.Unlock()
+		if pl.cooldownSeq == seq {
+			pl.cooldownActive.Store(false)
+			logger.V(2).Info("scheduling cooldown expired")
+		}
+	})
+	pl.cooldownMu.Unlock()
+	logger.V(2).Info("scheduling cooldown started", "pod", klog.KObj(p), "node", nodeName, "duration", pl.args.PostBindDelay.Duration)
 }

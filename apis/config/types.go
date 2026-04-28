@@ -14,6 +14,7 @@ type HappyEdgeArgs struct {
 	Metrics        map[string]MetricConfig
 	Groups         map[string]map[string]MetricConfig
 	ClusterMetrics map[string]ClusterMetricConfig
+	PostBindDelay  metav1.Duration
 }
 
 type MetricConfig struct {

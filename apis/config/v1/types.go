@@ -14,7 +14,8 @@ type HappyEdgeArgs struct {
 	ScrapeInterval metav1.Duration                    `json:"scrapeInterval"`
 	Metrics        map[string]MetricConfig            `json:"metrics"`
 	Groups         map[string]map[string]MetricConfig `json:"groups,omitempty"`
-	ClusterMetrics map[string]ClusterMetricConfig     `json:"clusterMetrics,omitempty"`
+	ClusterMetrics  map[string]ClusterMetricConfig     `json:"clusterMetrics,omitempty"`
+	PostBindDelay   metav1.Duration                    `json:"postBindDelay,omitempty"`
 }
 
 type MetricConfig struct {
