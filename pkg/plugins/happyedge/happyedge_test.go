@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -354,9 +355,11 @@ func TestValidation(t *testing.T) {
 			"metrics must define at least one metric",
 		},
 		{
-			"unknown name in Metrics",
-			func(a *HappyEdgeArgs) { a.Metrics["bad_metric"] = MetricConfig{Query: "x", Weight: 1} },
-			"metrics[bad_metric]: unknown metric name",
+			"ideal not less than worst in Metrics",
+			func(a *HappyEdgeArgs) {
+				a.Metrics["cpu_temp"] = MetricConfig{Query: "x", Ideal: 80, Worst: 80, Weight: 1}
+			},
+			"metrics[cpu_temp].ideal must be less than worst",
 		},
 		{
 			"empty query in Metrics",
@@ -369,22 +372,13 @@ func TestValidation(t *testing.T) {
 			"metrics[cpu_temp].weight must be > 0",
 		},
 		{
-			"unknown metric name inside group",
+			"ideal not less than worst inside group",
 			func(a *HappyEdgeArgs) {
 				a.Groups = map[string]map[string]MetricConfig{
-					"jetson": {"bad_metric": {Query: "x", Weight: 1}},
+					"jetson": {"cpu_temp": {Query: "x", Ideal: 90, Worst: 80, Weight: 1}},
 				}
 			},
-			"groups[jetson][bad_metric]: unknown metric name",
-		},
-		{
-			"unknown cluster metric name",
-			func(a *HappyEdgeArgs) {
-				a.ClusterMetrics = map[string]ClusterMetricConfig{
-					"avg_power": {Query: "x", Tolerance: 100},
-				}
-			},
-			"clusterMetrics[avg_power]: unknown cluster metric name",
+			"groups[jetson][cpu_temp].ideal must be less than worst",
 		},
 		{
 			"empty query in ClusterMetrics",
@@ -426,4 +420,64 @@ func TestValidation(t *testing.T) {
 			}
 		})
 	}
+}
+
+// -----------------------------------------------------------------------------
+// Test Scheduling Cooldown
+// -----------------------------------------------------------------------------
+func TestSchedulingCooldown(t *testing.T) {
+	const cooldown = 100 * time.Millisecond
+	pod := &v1.Pod{}
+
+	newPl := func(d time.Duration) *HappyEdge {
+		return &HappyEdge{
+			metricsCache: &fakeMetrics{},
+			args:         &HappyEdgeArgs{PostBindDelay: metav1.Duration{Duration: d}},
+		}
+	}
+
+	t.Run("no cooldown configured, PreFilter always passes", func(t *testing.T) {
+		pl := newPl(0)
+		pl.PostBind(context.Background(), nil, pod, "node1")
+		_, got := pl.PreFilter(context.Background(), nil, pod, nil)
+		if got.Code() != fwk.Success {
+			t.Errorf("got %v, want Success", got.Code())
+		}
+	})
+
+	t.Run("PostBind activates cooldown and PreFilter blocks scheduling", func(t *testing.T) {
+		pl := newPl(cooldown)
+		pl.PostBind(context.Background(), nil, pod, "node1")
+		_, got := pl.PreFilter(context.Background(), nil, pod, nil)
+		if got.Code() != fwk.Unschedulable {
+			t.Errorf("during cooldown: got %v, want Unschedulable", got.Code())
+		}
+	})
+
+	t.Run("PreFilter allows scheduling after cooldown expires", func(t *testing.T) {
+		pl := newPl(cooldown)
+		pl.PostBind(context.Background(), nil, pod, "node1")
+		time.Sleep(cooldown * 3)
+		_, got := pl.PreFilter(context.Background(), nil, pod, nil)
+		if got.Code() != fwk.Success {
+			t.Errorf("after cooldown: got %v, want Success", got.Code())
+		}
+	})
+
+	t.Run("second PostBind resets the timer extending the cooldown", func(t *testing.T) {
+		pl := newPl(cooldown)
+		pl.PostBind(context.Background(), nil, pod, "node1")
+		time.Sleep(cooldown / 2)
+		pl.PostBind(context.Background(), nil, pod, "node2")
+		time.Sleep(cooldown / 2)
+		_, got := pl.PreFilter(context.Background(), nil, pod, nil)
+		if got.Code() != fwk.Unschedulable {
+			t.Errorf("after reset, before new expiry: got %v, want Unschedulable", got.Code())
+		}
+		time.Sleep(cooldown * 2)
+		_, got = pl.PreFilter(context.Background(), nil, pod, nil)
+		if got.Code() != fwk.Success {
+			t.Errorf("after reset expiry: got %v, want Success", got.Code())
+		}
+	})
 }
