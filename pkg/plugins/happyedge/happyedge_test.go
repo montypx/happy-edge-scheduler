@@ -355,11 +355,11 @@ func TestValidation(t *testing.T) {
 			"metrics must define at least one metric",
 		},
 		{
-			"ideal not less than worst in Metrics",
+			"ideal equal to worst in Metrics",
 			func(a *HappyEdgeArgs) {
 				a.Metrics["cpu_temp"] = MetricConfig{Query: "x", Ideal: 80, Worst: 80, Weight: 1}
 			},
-			"metrics[cpu_temp].ideal must be less than worst",
+			"metrics[cpu_temp].ideal must not be the same as worst",
 		},
 		{
 			"empty query in Metrics",
@@ -372,13 +372,13 @@ func TestValidation(t *testing.T) {
 			"metrics[cpu_temp].weight must be > 0",
 		},
 		{
-			"ideal not less than worst inside group",
+			"ideal equal to worst inside group",
 			func(a *HappyEdgeArgs) {
 				a.Groups = map[string]map[string]MetricConfig{
-					"jetson": {"cpu_temp": {Query: "x", Ideal: 90, Worst: 80, Weight: 1}},
+					"jetson": {"cpu_temp": {Query: "x", Ideal: 80, Worst: 80, Weight: 1}},
 				}
 			},
-			"groups[jetson][cpu_temp].ideal must be less than worst",
+			"groups[jetson][cpu_temp].ideal must not be the same as worst",
 		},
 		{
 			"empty query in ClusterMetrics",
