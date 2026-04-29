@@ -126,12 +126,11 @@ func (pl *HappyEdge) Filter(
 	if node == nil {
 		return fwk.NewStatus(fwk.Error, "node not found")
 	}
-	for metricName := range pl.args.Metrics {
+	checkMetric := func(metricName string, cfg MetricConfig) *fwk.Status {
 		val, ok := pl.metricsCache.GetNodeMetric(metricName, node.Name)
 		if !ok {
 			return fwk.NewStatus(fwk.Error, fmt.Sprintf("%s not available for node %s", metricName, node.Name))
 		}
-		cfg := pl.nodeMetricConfig(node, metricName)
 		lowerIsBetter := cfg.Ideal < cfg.Worst
 		rejected := (lowerIsBetter && val > cfg.Worst) || (!lowerIsBetter && val < cfg.Worst)
 		if rejected {
@@ -146,7 +145,28 @@ func (pl *HappyEdge) Filter(
 				fmt.Sprintf("node %s: %s=%.2f outside worst threshold %.2f", node.Name, metricName, val, cfg.Worst),
 			)
 		}
+		return nil
 	}
+
+	for metricName := range pl.args.Metrics {
+		if s := checkMetric(metricName, pl.nodeMetricConfig(node, metricName)); s != nil {
+			return s
+		}
+	}
+
+	if groupName, ok := node.Labels["happyedge.io/group"]; ok {
+		if overrides, ok := pl.args.Groups[groupName]; ok {
+			for metricName, cfg := range overrides {
+				if _, inBase := pl.args.Metrics[metricName]; inBase {
+					continue
+				}
+				if s := checkMetric(metricName, cfg); s != nil {
+					return s
+				}
+			}
+		}
+	}
+
 	return fwk.NewStatus(fwk.Success, "")
 }
 
