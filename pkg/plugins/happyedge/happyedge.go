@@ -132,8 +132,10 @@ func (pl *HappyEdge) Filter(
 			return fwk.NewStatus(fwk.Error, fmt.Sprintf("%s not available for node %s", metricName, node.Name))
 		}
 		cfg := pl.nodeMetricConfig(node, metricName)
-		if val > cfg.Worst {
-			logger.V(2).Info("node rejected at Filter: metric exceeds worst threshold",
+		lowerIsBetter := cfg.Ideal < cfg.Worst
+		rejected := (lowerIsBetter && val > cfg.Worst) || (!lowerIsBetter && val < cfg.Worst)
+		if rejected {
+			logger.V(2).Info("node rejected at Filter: metric outside worst threshold",
 				"node", node.Name,
 				"metric", metricName,
 				"value", val,
@@ -141,7 +143,7 @@ func (pl *HappyEdge) Filter(
 			)
 			return fwk.NewStatus(
 				fwk.Unschedulable,
-				fmt.Sprintf("node %s: %s=%.2f exceeds worst threshold %.2f", node.Name, metricName, val, cfg.Worst),
+				fmt.Sprintf("node %s: %s=%.2f outside worst threshold %.2f", node.Name, metricName, val, cfg.Worst),
 			)
 		}
 	}

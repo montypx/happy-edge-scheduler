@@ -34,8 +34,8 @@ func NewHappyEdgeArgs(obj runtime.Object) (*HappyEdgeArgs, error) {
 		if cfg.Weight <= 0 {
 			return nil, fmt.Errorf("metrics[%s].weight must be > 0", name)
 		}
-		if cfg.Ideal >= cfg.Worst {
-			return nil, fmt.Errorf("metrics[%s].ideal must be less than worst", name)
+		if cfg.Ideal == cfg.Worst {
+			return nil, fmt.Errorf("metrics[%s].ideal must not be the same as worst", name)
 		}
 	}
 
@@ -47,8 +47,8 @@ func NewHappyEdgeArgs(obj runtime.Object) (*HappyEdgeArgs, error) {
 			if cfg.Weight <= 0 {
 				return nil, fmt.Errorf("groups[%s][%s].weight must be > 0", groupKey, name)
 			}
-			if cfg.Ideal >= cfg.Worst {
-				return nil, fmt.Errorf("groups[%s][%s].ideal must be less than worst", groupKey, name)
+			if cfg.Ideal == cfg.Worst {
+				return nil, fmt.Errorf("groups[%s][%s].ideal must not be the same as worst", groupKey, name)
 			}
 		}
 	}
