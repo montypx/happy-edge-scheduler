@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/go-logr/logr"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/klog/v2"
@@ -20,16 +21,34 @@ const Name = "HappyEdge"
 
 const scoreStateKey fwk.StateKey = Name
 
-var logger = klog.NewKlogr().WithName(Name)
+type timestampSink struct{ logr.LogSink }
+
+func (s timestampSink) Info(level int, msg string, keysAndValues ...any) {
+	s.LogSink.Info(level, msg, append([]any{"time", time.Now().Format(time.RFC3339)}, keysAndValues...)...)
+}
+
+func (s timestampSink) Error(err error, msg string, keysAndValues ...any) {
+	s.LogSink.Error(err, msg, append([]any{"time", time.Now().Format(time.RFC3339)}, keysAndValues...)...)
+}
+
+func (s timestampSink) WithValues(keysAndValues ...any) logr.LogSink {
+	return timestampSink{s.LogSink.WithValues(keysAndValues...)}
+}
+
+func (s timestampSink) WithName(name string) logr.LogSink {
+	return timestampSink{s.LogSink.WithName(name)}
+}
+
+var logger = logr.New(timestampSink{klog.NewKlogr().WithName(Name).GetSink()})
 
 type HappyEdge struct {
-	handle          fwk.Handle
-	metricsCache    MetricsReader
-	args            *HappyEdgeArgs
-	cooldownActive  atomic.Bool
-	cooldownMu      sync.Mutex
-	cooldownTimer   *time.Timer
-	cooldownSeq     uint64
+	handle         fwk.Handle
+	metricsCache   MetricsReader
+	args           *HappyEdgeArgs
+	cooldownActive atomic.Bool
+	cooldownMu     sync.Mutex
+	cooldownTimer  *time.Timer
+	cooldownSeq    uint64
 }
 
 type scoreState struct {
@@ -209,7 +228,7 @@ func (pl *HappyEdge) PreScore(
 	}
 	scores := topsis.Score(nodeCriteria)
 	for nodeName, score := range scores {
-		logger.V(2).Info("TOPSIS score assigned", "node", nodeName, "score", score)
+		logger.V(2).Info("TOPSIS score assigned", "node", nodeName, "score", score, "pod", pod)
 	}
 	state.Write(scoreStateKey, &scoreState{scores: scores})
 	return fwk.NewStatus(fwk.Success, "")
