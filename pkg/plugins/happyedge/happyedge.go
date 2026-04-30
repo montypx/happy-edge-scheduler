@@ -228,7 +228,7 @@ func (pl *HappyEdge) PreScore(
 	}
 	scores := topsis.Score(nodeCriteria)
 	for nodeName, score := range scores {
-		logger.V(2).Info("TOPSIS score assigned", "node", nodeName, "score", score, "pod", pod)
+		logger.V(2).Info("TOPSIS score assigned", "node", nodeName, "score", score, "pod", klog.KObj(pod))
 	}
 	state.Write(scoreStateKey, &scoreState{scores: scores})
 	return fwk.NewStatus(fwk.Success, "")
