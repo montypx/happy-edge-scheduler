@@ -150,6 +150,30 @@ func TestMixedDirectionCriteria(t *testing.T) {
 	}
 }
 
+// Value past the ideal: lower-is-better (value < ideal, negIdeal > ideal)
+// and higher-is-better (value > ideal, negIdeal < ideal)
+func TestValuePastIdeal(t *testing.T) {
+	t.Run("lower-is-better: value below ideal scores lower than value at ideal", func(t *testing.T) {
+		scores := Score([]NodeCriteria{
+			{NodeName: "at_ideal", Criteria: []Criterion{{Value: 0, Ideal: 0, NegIdeal: 10, Weight: 1}}},
+			{NodeName: "past_ideal", Criteria: []Criterion{{Value: -5, Ideal: 0, NegIdeal: 10, Weight: 1}}},
+		})
+		if scores["at_ideal"] <= scores["past_ideal"] {
+			t.Errorf("lower-is-better: at_ideal (%.2f) should outscore past_ideal (%.2f)", scores["at_ideal"], scores["past_ideal"])
+		}
+	})
+
+	t.Run("higher-is-better: value above ideal scores lower than value at ideal", func(t *testing.T) {
+		scores := Score([]NodeCriteria{
+			{NodeName: "at_ideal", Criteria: []Criterion{{Value: 10, Ideal: 10, NegIdeal: 0, Weight: 1}}},
+			{NodeName: "past_ideal", Criteria: []Criterion{{Value: 15, Ideal: 10, NegIdeal: 0, Weight: 1}}},
+		})
+		if scores["at_ideal"] <= scores["past_ideal"] {
+			t.Errorf("higher-is-better: at_ideal (%.2f) should outscore past_ideal (%.2f)", scores["at_ideal"], scores["past_ideal"])
+		}
+	})
+}
+
 // Boundary test: negative values
 func TestValueBeyondIdeal(t *testing.T) {
 	scores := Score([]NodeCriteria{
