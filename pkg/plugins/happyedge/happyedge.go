@@ -55,7 +55,7 @@ func New(ctx context.Context, obj runtime.Object, h fwk.Handle) (fwk.Plugin, err
 	if err != nil {
 		return nil, err
 	}
-	cache, err := NewMetricsCache(ctx, args.PrometheusURL, args.ScrapeInterval.Duration, args.Metrics, args.ClusterMetrics)
+	cache, err := NewMetricsCache(ctx, args.PrometheusURL, args.ScrapeInterval.Duration, args.Metrics, args.Groups, args.ClusterMetrics)
 	if err != nil {
 		return nil, err
 	}
