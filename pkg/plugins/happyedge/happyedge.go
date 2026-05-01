@@ -211,6 +211,7 @@ func (pl *HappyEdge) PreScore(
 			weight := cfg.Weight
 			if ann, ok := pod.Annotations["happyedge.io/weight-"+metricName]; ok {
 				if w, err := strconv.ParseFloat(ann, 64); err == nil {
+					logger.V(2).Info("Pod level weight override", "metric", metricName, "weightBefore", weight, "weightAfter", w, "pod", klog.KObj(pod))
 					weight = w
 				}
 			}
