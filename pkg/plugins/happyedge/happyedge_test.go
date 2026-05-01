@@ -305,6 +305,42 @@ func TestPreScoreAndScore(t *testing.T) {
 		}
 	})
 
+	t.Run("group-exclusive metric pod annotation overrides weight in scoring", func(t *testing.T) {
+		// cpu_util: nodeA=50 (bad), nodeB=10 (good) — nodeB wins without group metric
+		// npu_util (jetson-exclusive): nodeA=10 (good), nodeB=90 (bad)
+		// With weight-npu_util=10, npu_util should dominate and nodeA should win
+		groupArgs := &HappyEdgeArgs{
+			Metrics: map[string]MetricConfig{
+				"cpu_util": {Query: "x", Ideal: 0, Worst: 100, Weight: 1},
+			},
+			Groups: map[string]map[string]MetricConfig{
+				"jetson": {
+					"npu_util": {Query: "x", Ideal: 0, Worst: 100, Weight: 1},
+				},
+			},
+		}
+		pl := &HappyEdge{
+			metricsCache: &fakeMetrics{nodes: map[string]map[string]float64{
+				"cpu_util": {"nodeA": 50, "nodeB": 10},
+				"npu_util": {"nodeA": 10, "nodeB": 90},
+			}},
+			args: groupArgs,
+		}
+		nodeA := makeNodeLabeled("nodeA", map[string]string{"happyedge.io/group": "jetson"})
+		nodeB := makeNodeLabeled("nodeB", map[string]string{"happyedge.io/group": "jetson"})
+		pod := &v1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Annotations: map[string]string{"happyedge.io/weight-npu_util": "10.0"},
+			},
+		}
+		state := runPreScore(pl, pod, toNodeInfo(nodeA), toNodeInfo(nodeB))
+		sa := scoreOf(pl, state, pod, nodeA)
+		sb := scoreOf(pl, state, pod, nodeB)
+		if sa <= sb {
+			t.Errorf("nodeA (npu_util=10) should outscore nodeB (npu_util=90) with weight-npu_util=10, got A=%d B=%d", sa, sb)
+		}
+	})
+
 	t.Run("score zero for missing score for node", func(t *testing.T) {
 		pl := &HappyEdge{metricsCache: &fakeMetrics{nodes: symmetricCache}, args: args}
 		state := runPreScore(pl, &v1.Pod{}, toNodeInfo(nodeJetson), toNodeInfo(nodeRk))
