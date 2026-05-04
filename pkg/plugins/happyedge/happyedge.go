@@ -4,9 +4,14 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"sync"
+	"sync/atomic"
+	"time"
 
+	"github.com/go-logr/logr"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/klog/v2"
 	fwk "k8s.io/kube-scheduler/framework"
 
 	"github.com/montypx/happy-edge-scheduling-plugin/pkg/plugins/happyedge/topsis"
@@ -16,10 +21,34 @@ const Name = "HappyEdge"
 
 const scoreStateKey fwk.StateKey = Name
 
+type timestampSink struct{ logr.LogSink }
+
+func (s timestampSink) Info(level int, msg string, keysAndValues ...any) {
+	s.LogSink.Info(level, msg, append([]any{"time", time.Now().Format(time.RFC3339)}, keysAndValues...)...)
+}
+
+func (s timestampSink) Error(err error, msg string, keysAndValues ...any) {
+	s.LogSink.Error(err, msg, append([]any{"time", time.Now().Format(time.RFC3339)}, keysAndValues...)...)
+}
+
+func (s timestampSink) WithValues(keysAndValues ...any) logr.LogSink {
+	return timestampSink{s.LogSink.WithValues(keysAndValues...)}
+}
+
+func (s timestampSink) WithName(name string) logr.LogSink {
+	return timestampSink{s.LogSink.WithName(name)}
+}
+
+var logger = logr.New(timestampSink{klog.NewKlogr().WithName(Name).GetSink()})
+
 type HappyEdge struct {
-	handle       fwk.Handle
-	metricsCache MetricsReader
-	args         *HappyEdgeArgs
+	handle         fwk.Handle
+	metricsCache   MetricsReader
+	args           *HappyEdgeArgs
+	cooldownActive atomic.Bool
+	cooldownMu     sync.Mutex
+	cooldownTimer  *time.Timer
+	cooldownSeq    uint64
 }
 
 type scoreState struct {
@@ -38,13 +67,14 @@ var _ fwk.PreFilterPlugin = &HappyEdge{}
 var _ fwk.FilterPlugin = &HappyEdge{}
 var _ fwk.PreScorePlugin = &HappyEdge{}
 var _ fwk.ScorePlugin = &HappyEdge{}
+var _ fwk.PostBindPlugin = &HappyEdge{}
 
 func New(ctx context.Context, obj runtime.Object, h fwk.Handle) (fwk.Plugin, error) {
 	args, err := NewHappyEdgeArgs(obj)
 	if err != nil {
 		return nil, err
 	}
-	cache, err := NewMetricsCache(args.PrometheusURL, args.ScrapeInterval.Duration, args.Metrics, args.ClusterMetrics)
+	cache, err := NewMetricsCache(ctx, args.PrometheusURL, args.ScrapeInterval.Duration, args.Metrics, args.Groups, args.ClusterMetrics)
 	if err != nil {
 		return nil, err
 	}
@@ -70,18 +100,43 @@ func (pl *HappyEdge) nodeMetricConfig(node *v1.Node, metricName string) MetricCo
 	return pl.args.Metrics[metricName]
 }
 
+func (pl *HappyEdge) forEachNodeMetric(node *v1.Node, fn func(metricName string, cfg MetricConfig)) {
+	for metricName := range pl.args.Metrics {
+		fn(metricName, pl.nodeMetricConfig(node, metricName))
+	}
+	if groupName, ok := node.Labels["happyedge.io/group"]; ok {
+		if overrides, ok := pl.args.Groups[groupName]; ok {
+			for metricName, cfg := range overrides {
+				if _, inBase := pl.args.Metrics[metricName]; !inBase {
+					fn(metricName, cfg)
+				}
+			}
+		}
+	}
+}
+
 func (pl *HappyEdge) PreFilter(
 	ctx context.Context,
 	state fwk.CycleState,
 	pod *v1.Pod,
 	_ []fwk.NodeInfo,
 ) (*fwk.PreFilterResult, *fwk.Status) {
+	if pl.args.PostBindDelay.Duration > 0 && pl.cooldownActive.Load() {
+		logger.V(2).Info("pod rejected at PreFilter: scheduling cooldown active", "pod", klog.KObj(pod))
+		return nil, fwk.NewStatus(fwk.Unschedulable, "scheduling cooldown active")
+	}
 	for metricName, cfg := range pl.args.ClusterMetrics {
 		val, ok := pl.metricsCache.GetClusterMetric(metricName)
 		if !ok {
 			return nil, fwk.NewStatus(fwk.Error, metricName+" metric not available")
 		}
 		if val > cfg.Tolerance {
+			logger.V(2).Info("pod rejected at PreFilter: cluster metric exceeds tolerance",
+				"pod", klog.KObj(pod),
+				"metric", metricName,
+				"value", val,
+				"tolerance", cfg.Tolerance,
+			)
 			return nil, fwk.NewStatus(
 				fwk.Unschedulable,
 				fmt.Sprintf("cluster %s=%.2f exceeds tolerance %.2f", metricName, val, cfg.Tolerance),
@@ -105,18 +160,32 @@ func (pl *HappyEdge) Filter(
 	if node == nil {
 		return fwk.NewStatus(fwk.Error, "node not found")
 	}
-	for metricName := range pl.args.Metrics {
+	var result *fwk.Status
+	pl.forEachNodeMetric(node, func(metricName string, cfg MetricConfig) {
+		if result != nil {
+			return
+		}
 		val, ok := pl.metricsCache.GetNodeMetric(metricName, node.Name)
 		if !ok {
-			return fwk.NewStatus(fwk.Error, fmt.Sprintf("%s not available for node %s", metricName, node.Name))
+			result = fwk.NewStatus(fwk.Error, fmt.Sprintf("%s not available for node %s", metricName, node.Name))
+			return
 		}
-		cfg := pl.nodeMetricConfig(node, metricName)
-		if val > cfg.Worst {
-			return fwk.NewStatus(
+		lowerIsBetter := cfg.Ideal < cfg.Worst
+		if (lowerIsBetter && val > cfg.Worst) || (!lowerIsBetter && val < cfg.Worst) {
+			logger.V(2).Info("node rejected at Filter: metric outside worst threshold",
+				"node", node.Name,
+				"metric", metricName,
+				"value", val,
+				"worst", cfg.Worst,
+			)
+			result = fwk.NewStatus(
 				fwk.Unschedulable,
-				fmt.Sprintf("node %s: %s=%.2f exceeds worst threshold %.2f", node.Name, metricName, val, cfg.Worst),
+				fmt.Sprintf("node %s: %s=%.2f outside worst threshold %.2f", node.Name, metricName, val, cfg.Worst),
 			)
 		}
+	})
+	if result != nil {
+		return result
 	}
 	return fwk.NewStatus(fwk.Success, "")
 }
@@ -134,15 +203,15 @@ func (pl *HappyEdge) PreScore(
 			continue
 		}
 		var criteria []topsis.Criterion
-		for metricName := range pl.args.Metrics {
+		pl.forEachNodeMetric(node, func(metricName string, cfg MetricConfig) {
 			val, ok := pl.metricsCache.GetNodeMetric(metricName, node.Name)
 			if !ok {
-				continue
+				return
 			}
-			cfg := pl.nodeMetricConfig(node, metricName)
 			weight := cfg.Weight
 			if ann, ok := pod.Annotations["happyedge.io/weight-"+metricName]; ok {
 				if w, err := strconv.ParseFloat(ann, 64); err == nil {
+					logger.V(2).Info("Pod level weight override", "metric", metricName, "weightBefore", weight, "weightAfter", w, "pod", klog.KObj(pod))
 					weight = w
 				}
 			}
@@ -152,13 +221,17 @@ func (pl *HappyEdge) PreScore(
 				NegIdeal: cfg.Worst,
 				Weight:   weight,
 			})
-		}
+		})
 		nodeCriteria = append(nodeCriteria, topsis.NodeCriteria{
 			NodeName: node.Name,
 			Criteria: criteria,
 		})
 	}
-	state.Write(scoreStateKey, &scoreState{scores: topsis.Score(nodeCriteria)})
+	scores := topsis.Score(nodeCriteria)
+	for nodeName, score := range scores {
+		logger.V(2).Info("TOPSIS score assigned", "node", nodeName, "score", score, "pod", klog.KObj(pod))
+	}
+	state.Write(scoreStateKey, &scoreState{scores: scores})
 	return fwk.NewStatus(fwk.Success, "")
 }
 
@@ -189,4 +262,27 @@ func (pl *HappyEdge) Score(
 
 func (pl *HappyEdge) ScoreExtensions() fwk.ScoreExtensions {
 	return nil
+}
+
+func (pl *HappyEdge) PostBind(ctx context.Context, state fwk.CycleState, p *v1.Pod, nodeName string) {
+	if pl.args.PostBindDelay.Duration <= 0 {
+		return
+	}
+	pl.cooldownMu.Lock()
+	pl.cooldownActive.Store(true)
+	if pl.cooldownTimer != nil {
+		pl.cooldownTimer.Stop()
+	}
+	pl.cooldownSeq++
+	seq := pl.cooldownSeq
+	pl.cooldownTimer = time.AfterFunc(pl.args.PostBindDelay.Duration, func() {
+		pl.cooldownMu.Lock()
+		defer pl.cooldownMu.Unlock()
+		if pl.cooldownSeq == seq {
+			pl.cooldownActive.Store(false)
+			logger.V(2).Info("scheduling cooldown expired")
+		}
+	})
+	pl.cooldownMu.Unlock()
+	logger.V(2).Info("scheduling cooldown started", "pod", klog.KObj(p), "node", nodeName, "duration", pl.args.PostBindDelay.Duration)
 }

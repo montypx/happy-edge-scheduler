@@ -20,26 +20,58 @@ type MetricsCache struct {
 	mu             sync.RWMutex
 	client         promv1.API
 	scrapeInterval time.Duration
-	metrics        map[string]MetricConfig
+	nodeQueries    map[string][]string
 	clusterMetrics map[string]ClusterMetricConfig
 	nodeValues     map[string]map[string]float64
 	clusterValues  map[string]float64
 }
 
-func NewMetricsCache(url string, scrapeInterval time.Duration, metrics map[string]MetricConfig, clusterMetrics map[string]ClusterMetricConfig) (*MetricsCache, error) {
+func NewMetricsCache(
+	ctx context.Context,
+	url string,
+	scrapeInterval time.Duration,
+	metrics map[string]MetricConfig,
+	groups map[string]map[string]MetricConfig,
+	clusterMetrics map[string]ClusterMetricConfig,
+) (*MetricsCache, error) {
 	c, err := promapi.NewClient(promapi.Config{Address: url})
 	if err != nil {
 		return nil, err
 	}
+	api := promv1.NewAPI(c)
+	if _, _, err := api.Query(ctx, "1", time.Now()); err != nil {
+		return nil, fmt.Errorf("prometheus unreachable at %s: %w", url, err)
+	}
+
+	nodeQueries := make(map[string][]string)
+	seen := make(map[string]map[string]bool)
+	addQuery := func(name, query string) {
+		if seen[name] == nil {
+			seen[name] = make(map[string]bool)
+		}
+		if !seen[name][query] {
+			seen[name][query] = true
+			nodeQueries[name] = append(nodeQueries[name], query)
+		}
+	}
+	for name, cfg := range metrics {
+		addQuery(name, cfg.Query)
+	}
+	for _, overrides := range groups {
+		for name, cfg := range overrides {
+			addQuery(name, cfg.Query)
+		}
+	}
+
 	mc := &MetricsCache{
-		client:         promv1.NewAPI(c),
+		client:         api,
 		scrapeInterval: scrapeInterval,
-		metrics:        metrics,
+		nodeQueries:    nodeQueries,
 		clusterMetrics: clusterMetrics,
 		nodeValues:     make(map[string]map[string]float64),
 		clusterValues:  make(map[string]float64),
 	}
-	mc.scrape(context.Background())
+	mc.scrape(ctx)
 	go mc.run()
 	return mc, nil
 }
@@ -53,15 +85,25 @@ func (mc *MetricsCache) run() {
 }
 
 func (mc *MetricsCache) scrape(ctx context.Context) {
-	nodeValues := make(map[string]map[string]float64, len(mc.metrics))
-	for name, cfg := range mc.metrics {
-		nodeValues[name] = mc.queryNodeVector(ctx, cfg.Query)
+	nodeValues := make(map[string]map[string]float64, len(mc.nodeQueries))
+	for name, queries := range mc.nodeQueries {
+		merged := make(map[string]float64)
+		for _, query := range queries {
+			for node, val := range mc.queryNodeVector(ctx, query) {
+				merged[node] = val
+			}
+		}
+		if len(merged) == 0 {
+			logger.Info("scrape: query returned no results", "metric", name)
+		}
+		nodeValues[name] = merged
 	}
 
 	clusterValues := make(map[string]float64, len(mc.clusterMetrics))
 	for name, cfg := range mc.clusterMetrics {
 		val, err := mc.queryScalar(ctx, cfg.Query)
 		if err != nil {
+			logger.Info("scrape: cluster metric query returned no results", "metric", name, "err", err)
 			continue
 		}
 		clusterValues[name] = val

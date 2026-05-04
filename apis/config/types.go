@@ -11,6 +11,7 @@ type HappyEdgeArgs struct {
 
 	PrometheusURL  string
 	ScrapeInterval metav1.Duration
+	PostBindDelay  metav1.Duration
 	Metrics        map[string]MetricConfig
 	Groups         map[string]map[string]MetricConfig
 	ClusterMetrics map[string]ClusterMetricConfig

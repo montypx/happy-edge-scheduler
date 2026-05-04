@@ -25,7 +25,7 @@ func Score(nodes []NodeCriteria) map[string]float64 {
 	for i, node := range nodes {
 		var sumIdeal, sumNeg float64
 		for _, c := range node.Criteria {
-			span := c.NegIdeal - c.Ideal
+			span := math.Abs(c.NegIdeal - c.Ideal)
 			var norm float64
 			if span != 0 {
 				norm = (c.Value - c.Ideal) / span

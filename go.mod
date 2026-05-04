@@ -3,12 +3,14 @@ module github.com/montypx/happy-edge-scheduling-plugin
 go 1.25.8
 
 require (
+	github.com/go-logr/logr v1.4.3
 	github.com/prometheus/client_golang v1.23.2
 	github.com/prometheus/common v0.66.1
 	k8s.io/api v0.35.2
 	k8s.io/apimachinery v0.35.2
 	k8s.io/code-generator v0.35.2
 	k8s.io/component-base v0.35.2
+	k8s.io/klog/v2 v2.130.1
 	k8s.io/kube-scheduler v0.35.2
 	k8s.io/kubernetes v1.35.2
 	sigs.k8s.io/controller-tools v0.20.1
@@ -32,7 +34,6 @@ require (
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/fxamacker/cbor/v2 v2.9.0 // indirect
-	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-openapi/jsonpointer v0.21.0 // indirect
 	github.com/go-openapi/jsonreference v0.20.2 // indirect
@@ -113,7 +114,6 @@ require (
 	k8s.io/csi-translation-lib v0.0.0 // indirect
 	k8s.io/dynamic-resource-allocation v0.35.2 // indirect
 	k8s.io/gengo/v2 v2.0.0-20250922181213-ec3ebc5fd46b // indirect
-	k8s.io/klog/v2 v2.130.1 // indirect
 	k8s.io/kms v0.35.2 // indirect
 	k8s.io/kube-openapi v0.0.0-20250910181357-589584f1c912 // indirect
 	k8s.io/kubelet v0.35.2 // indirect

@@ -89,6 +89,7 @@ func autoConvert_v1_HappyEdgeArgs_To_config_HappyEdgeArgs(in *HappyEdgeArgs, out
 	out.Metrics = *(*map[string]config.MetricConfig)(unsafe.Pointer(&in.Metrics))
 	out.Groups = *(*map[string]map[string]config.MetricConfig)(unsafe.Pointer(&in.Groups))
 	out.ClusterMetrics = *(*map[string]config.ClusterMetricConfig)(unsafe.Pointer(&in.ClusterMetrics))
+	out.PostBindDelay = in.PostBindDelay
 	return nil
 }
 
@@ -103,6 +104,7 @@ func autoConvert_config_HappyEdgeArgs_To_v1_HappyEdgeArgs(in *config.HappyEdgeAr
 	out.Metrics = *(*map[string]MetricConfig)(unsafe.Pointer(&in.Metrics))
 	out.Groups = *(*map[string]map[string]MetricConfig)(unsafe.Pointer(&in.Groups))
 	out.ClusterMetrics = *(*map[string]ClusterMetricConfig)(unsafe.Pointer(&in.ClusterMetrics))
+	out.PostBindDelay = in.PostBindDelay
 	return nil
 }
 
