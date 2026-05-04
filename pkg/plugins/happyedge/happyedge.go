@@ -100,8 +100,6 @@ func (pl *HappyEdge) nodeMetricConfig(node *v1.Node, metricName string) MetricCo
 	return pl.args.Metrics[metricName]
 }
 
-// forEachNodeMetric calls fn for every metric applicable to node: base metrics
-// using any group override, followed by group-exclusive metrics not in the base set.
 func (pl *HappyEdge) forEachNodeMetric(node *v1.Node, fn func(metricName string, cfg MetricConfig)) {
 	for metricName := range pl.args.Metrics {
 		fn(metricName, pl.nodeMetricConfig(node, metricName))

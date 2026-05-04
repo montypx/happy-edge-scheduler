@@ -306,9 +306,6 @@ func TestPreScoreAndScore(t *testing.T) {
 	})
 
 	t.Run("group-exclusive metric pod annotation overrides weight in scoring", func(t *testing.T) {
-		// cpu_util: nodeA=50 (bad), nodeB=10 (good) — nodeB wins without group metric
-		// npu_util (jetson-exclusive): nodeA=10 (good), nodeB=90 (bad)
-		// With weight-npu_util=10, npu_util should dominate and nodeA should win
 		groupArgs := &HappyEdgeArgs{
 			Metrics: map[string]MetricConfig{
 				"cpu_util": {Query: "x", Ideal: 0, Worst: 100, Weight: 1},
