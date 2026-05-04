@@ -1,6 +1,9 @@
-[![License](https://img.shields.io/badge/License-GNU%20GPL%20v3.0-blue.svg)](https://github.com/montypx/happy-edge-scheduler/blob/main/LICENSE)
+[![License](https://img.shields.io/badge/License-GNU%20GPL%20v3.0-blue.svg)](https://github.com/montypx/happy-edge-scheduler/blob/main/LICENSE) [![Unit Testing (CI)](https://github.com/montypx/happy-edge-scheduler/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/montypx/happy-edge-scheduler/actions/workflows/test.yml)
 
 # HappyEdge Scheduling Plugin
+
+![Kubernetes](https://img.shields.io/badge/Kubernetes-326CE5?style=flat&logo=kubernetes&logoColor=white)
+![Go](https://img.shields.io/badge/Go-00ADD8?style=flat&logo=go&logoColor=white)
 
 A Kubernetes scheduler plugin that lets you configure scheduling behaviour using Prometheus metrics data. Unofficial out-of-tree plugin that has been tested on a four node heterogeneous testbed.
 
